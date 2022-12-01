@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import json
 from secrets import randbelow
 from collections import deque
 from math import floor
@@ -21,6 +22,10 @@ class Block:
         self.txns = deque()
         self.size = 0
         self.sigops = 0
+
+    def __iter__(self):
+        for tx in self.txns:
+            yield tx
 
     def add_if_fits(self, tx):
         if self.size + tx.size <= MAX_BLOCK_SIZE and self.sigops + tx.sigops <= MAX_BLOCK_SIGOPS:
@@ -76,6 +81,13 @@ class Mempool:
         self.total_scaled_weight_ratio = new_w
         self.check_invariant()
         return found
+
+    def __iter__(self):
+        for (_, tx) in self.txns:
+            yield tx
+
+    def filter(self, pred):
+        return Mempool((tx for (_, tx) in self.txns if pred(tx)))
 
     def num_transactions(self):
         return len(self.txns)
@@ -156,11 +168,11 @@ def prob(p):
 
 
 def algorithm_1(block, mempool):
-    high_fee_mempool = Mempool((tx for tx in mempool if not tx.is_low_fee()))
+    high_fee_mempool = mempool.filter(lambda tx: not tx.is_low_fee())
     while high_fee_mempool.num_transactions() > 0:
         block.add_if_fits(high_fee_mempool.pick_by_weight_ratio())
 
-    remaining_mempool = Mempool((tx for tx in mempool if tx.is_low_fee()))
+    remaining_mempool = mempool.filter(lambda tx: tx.is_low_fee())
     remaining_block_size = MAX_BLOCK_SIZE - block.size
     print("block_size =", block.size)
     print("remaining_block_size =", remaining_block_size)
@@ -175,11 +187,11 @@ def algorithm_1(block, mempool):
 
 
 def algorithm_2(block, mempool):
-    high_fee_mempool = Mempool((tx for tx in mempool if not tx.is_low_fee()))
+    high_fee_mempool = mempool.filter(lambda tx: not tx.is_low_fee())
     while high_fee_mempool.num_transactions() > 0:
         block.add_if_fits(high_fee_mempool.pick_by_weight_ratio())
 
-    remaining_mempool = Mempool((tx for tx in mempool if tx.is_low_fee()))
+    remaining_mempool = mempool.filter(lambda tx: tx.is_low_fee())
     remaining_block_size = MAX_BLOCK_SIZE - block.size
     print("block_size =", block.size)
     print("remaining_block_size =", remaining_block_size)
@@ -194,11 +206,11 @@ def algorithm_2(block, mempool):
 
 
 def algorithm_3(block, mempool):
-    high_fee_mempool = Mempool((tx for tx in mempool if not tx.is_low_fee()))
+    high_fee_mempool = mempool.filter(lambda tx: not tx.is_low_fee())
     while high_fee_mempool.num_transactions() > 0:
         block.add_if_fits(high_fee_mempool.pick_by_weight_ratio())
 
-    for tx in shuffled((tx for tx in mempool if tx.is_low_fee())):
+    for tx in shuffled(filter(lambda tx: tx.is_low_fee(), mempool)):
         if prob(tx.scaled_weight_ratio):
             if block.health(tx) < 2/3:
                 break
@@ -207,11 +219,11 @@ def algorithm_3(block, mempool):
 
 def algorithm_4(block, mempool):
     """This is the proposed algorithm."""
-    high_fee_mempool = Mempool((tx for tx in mempool if not tx.is_low_fee()))
+    high_fee_mempool = mempool.filter(lambda tx: not tx.is_low_fee())
     while high_fee_mempool.num_transactions() > 0:
         block.add_if_fits(high_fee_mempool.pick_by_weight_ratio())
 
-    remaining_mempool = Mempool((tx for tx in mempool if tx.is_low_fee()))
+    remaining_mempool = mempool.filter(lambda tx: tx.is_low_fee())
     unpaid_actions = 0
     while remaining_mempool.num_transactions() > 0:
         tx = remaining_mempool.pick_by_weight_ratio()
@@ -222,32 +234,38 @@ def algorithm_4(block, mempool):
             unpaid_actions += tx.unpaid_actions
 
 
+def sample_mempool(cost_limit=MEMPOOL_COST_LIMIT):
+    return Mempool(sample_transactions(cost_limit))
 
-def test(alg):
-    block = Block()
-    n = randbelow(1000)
-    mempool = deque()
+def sample_transactions(cost_limit):
     cost = 0
     while True:
         tx = Tx.random()
-        if cost + tx.cost > MEMPOOL_COST_LIMIT:
+        if cost + tx.cost > cost_limit:
             break
         cost += tx.cost
-        mempool.append(tx)
+        yield tx
 
+def test(alg, mempool):
     pp = PrettyPrinter(indent=2)
     print("Algorithm:", alg.__name__)
     print("Mempool:")
-    pp.pprint(mempool)
+    pp.pprint(list(mempool))
+
+    block = Block()
     alg(block, mempool)
+
     print("Block (size=%r, sigops=%r):" % (block.size, block.sigops))
-    pp.pprint(block.txns)
+    pp.pprint(list(block))
     print("Health:", block.health())
     print("Unpaid actions:", block.total_unpaid_actions())
     print("")
 
+
 if __name__ == "__main__":
-    #test(algorithm_1)
-    #test(algorithm_2)
-    #test(algorithm_3)
-    test(algorithm_4)
+    mempool = sample_mempool()
+
+    #test(algorithm_1, mempool)
+    #test(algorithm_2, mempool)
+    #test(algorithm_3, mempool)
+    test(algorithm_4, mempool)
