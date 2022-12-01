@@ -101,6 +101,20 @@ class Mempool:
     def total_scaled_weight_ratio(self):
         return sum((tx.scaled_weight_ratio for (_, tx) in self.txns))
 
+    @classmethod
+    def read(cls, filename):
+        with open(filename) as f:
+            data = json.load(f)
+
+        return cls((Tx(tx['size'], tx.get('sigops', 0), tx['fee'], tx['logical_actions']) for tx in data))
+
+    def write(self, filename):
+        data = [{'size': tx.size, 'sigops': tx.sigops, 'fee': tx.fee, 'logical_actions': tx.logical_actions}
+                for (_, tx) in self.txns]
+
+        with open(filename, "w") as f:
+            json.dump(data, f)
+
 
 def conventional_fee(logical_actions):
     return MARGINAL_FEE * max(GRACE_ACTIONS, logical_actions)
@@ -264,6 +278,8 @@ def test(alg, mempool):
 
 if __name__ == "__main__":
     mempool = sample_mempool()
+    #mempool.write("mempool.json")
+    #mempool = Mempool.read("mempool.json")
 
     #test(algorithm_1, mempool)
     #test(algorithm_2, mempool)
