@@ -124,7 +124,7 @@ class Tx:
         return self.scaled_weight_ratio < FIXED_ONE
 
     def __repr__(self):
-        return ("Tx(size=%r, sigops=%r, fee=%r, logical_actions=%r, conventional_fee=%r, weight_ratio=%r, cost=%r, unpaid_actions=%r)"
+        return ("Tx(size=%7d, sigops=%5d, fee=%7d, logical_actions=%5d, conventional_fee=%7d, weight_ratio=%8f, cost=%7d, unpaid_actions=%5d)"
                 % (self.size, self.sigops, self.fee, self.logical_actions, self.conventional_fee, self.scaled_weight_ratio/FIXED_ONE, self.cost, self.unpaid_actions))
 
     @classmethod
@@ -257,7 +257,7 @@ def test(alg, mempool):
 
     print("Block (size=%r, sigops=%r):" % (block.size, block.sigops))
     pp.pprint(list(block))
-    print("Health:", block.health())
+    print("Health: %8f" % (block.health(),))
     print("Unpaid actions:", block.total_unpaid_actions())
     print("")
 
