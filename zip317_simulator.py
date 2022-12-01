@@ -52,11 +52,14 @@ class Mempool:
             w += tx.scaled_weight_ratio
             self.txns.append((w, tx))
         self.total_scaled_weight_ratio = w
+        self.check_invariant()
+
+    def check_invariant(self):
         assert len(self.txns) == 0 or self.txns[-1][0] == self.total_scaled_weight_ratio
 
     def pick_by_weight_ratio(self):
         assert len(self.txns) > 0
-        assert self.txns[-1][0] == self.total_scaled_weight_ratio
+        self.check_invariant()
         target = randbelow(self.total_scaled_weight_ratio)
         new_txns = deque()
         found = None
@@ -71,7 +74,7 @@ class Mempool:
         assert found is not None
         self.txns = new_txns
         self.total_scaled_weight_ratio = new_w
-        assert len(self.txns) == 0 or self.txns[-1][0] == self.total_scaled_weight_ratio
+        self.check_invariant()
         return found
 
     def num_transactions(self):
