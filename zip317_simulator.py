@@ -7,7 +7,7 @@ from pprint import PrettyPrinter
 
 MARGINAL_FEE = 5000
 GRACE_ACTIONS = 2
-WEIGHT_CAP = 4.0
+WEIGHT_RATIO_CAP = 4.0
 MAX_STANDARD_TX_SIGOPS = 4000
 MAX_BLOCK_SIGOPS = 20000
 MAX_BLOCK_SIZE = 2000000
@@ -49,15 +49,15 @@ class Mempool:
         self.txns = deque()
         w = 0
         for tx in txns:
-            w += tx.scaled_weight
+            w += tx.scaled_weight_ratio
             self.txns.append((w, tx))
-        self.total_scaled_weight = w
-        assert len(self.txns) == 0 or self.txns[-1][0] == self.total_scaled_weight
+        self.total_scaled_weight_ratio = w
+        assert len(self.txns) == 0 or self.txns[-1][0] == self.total_scaled_weight_ratio
 
-    def pick_by_weight(self):
+    def pick_by_weight_ratio(self):
         assert len(self.txns) > 0
-        assert self.txns[-1][0] == self.total_scaled_weight
-        target = randbelow(self.total_scaled_weight)
+        assert self.txns[-1][0] == self.total_scaled_weight_ratio
+        target = randbelow(self.total_scaled_weight_ratio)
         new_txns = deque()
         found = None
         new_w = 0
@@ -65,13 +65,13 @@ class Mempool:
             if found is None and w > target:
                 found = tx
             else:
-                new_w += tx.scaled_weight
+                new_w += tx.scaled_weight_ratio
                 new_txns.append((new_w, tx))
 
         assert found is not None
         self.txns = new_txns
-        self.total_scaled_weight = new_w
-        assert len(self.txns) == 0 or self.txns[-1][0] == self.total_scaled_weight
+        self.total_scaled_weight_ratio = new_w
+        assert len(self.txns) == 0 or self.txns[-1][0] == self.total_scaled_weight_ratio
         return found
 
     def num_transactions(self):
@@ -83,8 +83,8 @@ class Mempool:
     def total_conventional_fees(self):
         return sum((tx.conventional_fee for (_, tx) in self.txns))
 
-    def total_scaled_weight(self):
-        return sum((tx.scaled_weight for (_, tx) in self.txns))
+    def total_scaled_weight_ratio(self):
+        return sum((tx.scaled_weight_ratio for (_, tx) in self.txns))
 
 
 def conventional_fee(logical_actions):
@@ -101,16 +101,16 @@ class Tx:
         self.fee = fee
         self.logical_actions = logical_actions
         self.conventional_fee = conventional_fee(logical_actions)
-        self.scaled_weight = min((FIXED_ONE * max(1, self.fee)) // self.conventional_fee, int(FIXED_ONE * WEIGHT_CAP))
+        self.scaled_weight_ratio = min((FIXED_ONE * max(1, self.fee)) // self.conventional_fee, int(FIXED_ONE * WEIGHT_RATIO_CAP))
         self.cost = max(size, 4000)
         self.unpaid_actions = max(0, max(GRACE_ACTIONS, logical_actions) - fee//MARGINAL_FEE)
 
     def is_low_fee(self):
-        return self.scaled_weight < FIXED_ONE
+        return self.scaled_weight_ratio < FIXED_ONE
 
     def __repr__(self):
-        return ("Tx(size=%r, sigops=%r, fee=%r, logical_actions=%r, conventional_fee=%r, weight=%r, cost=%r, unpaid_actions=%r)"
-                % (self.size, self.sigops, self.fee, self.logical_actions, self.conventional_fee, self.scaled_weight/FIXED_ONE, self.cost, self.unpaid_actions))
+        return ("Tx(size=%r, sigops=%r, fee=%r, logical_actions=%r, conventional_fee=%r, weight_ratio=%r, cost=%r, unpaid_actions=%r)"
+                % (self.size, self.sigops, self.fee, self.logical_actions, self.conventional_fee, self.scaled_weight_ratio/FIXED_ONE, self.cost, self.unpaid_actions))
 
     @classmethod
     def random(cls):
@@ -155,7 +155,7 @@ def prob(p):
 def algorithm_1(block, mempool):
     high_fee_mempool = Mempool((tx for tx in mempool if not tx.is_low_fee()))
     while high_fee_mempool.num_transactions() > 0:
-        block.add_if_fits(high_fee_mempool.pick_by_weight())
+        block.add_if_fits(high_fee_mempool.pick_by_weight_ratio())
 
     remaining_mempool = Mempool((tx for tx in mempool if tx.is_low_fee()))
     remaining_block_size = MAX_BLOCK_SIZE - block.size
@@ -165,7 +165,7 @@ def algorithm_1(block, mempool):
     print("size_target =", size_target)
 
     while remaining_mempool.num_transactions() > 0:
-        tx = remaining_mempool.pick_by_weight()
+        tx = remaining_mempool.pick_by_weight_ratio()
         if block.size + tx.size > size_target:
             break
         block.add_if_fits(tx)
@@ -174,7 +174,7 @@ def algorithm_1(block, mempool):
 def algorithm_2(block, mempool):
     high_fee_mempool = Mempool((tx for tx in mempool if not tx.is_low_fee()))
     while high_fee_mempool.num_transactions() > 0:
-        block.add_if_fits(high_fee_mempool.pick_by_weight())
+        block.add_if_fits(high_fee_mempool.pick_by_weight_ratio())
 
     remaining_mempool = Mempool((tx for tx in mempool if tx.is_low_fee()))
     remaining_block_size = MAX_BLOCK_SIZE - block.size
@@ -184,7 +184,7 @@ def algorithm_2(block, mempool):
     print("size_target =", size_target)
 
     while remaining_mempool.num_transactions() > 0:
-        tx = remaining_mempool.pick_by_weight()
+        tx = remaining_mempool.pick_by_weight_ratio()
         if block.size + tx.size > size_target:
             break
         block.add_if_fits(tx)
@@ -193,10 +193,10 @@ def algorithm_2(block, mempool):
 def algorithm_3(block, mempool):
     high_fee_mempool = Mempool((tx for tx in mempool if not tx.is_low_fee()))
     while high_fee_mempool.num_transactions() > 0:
-        block.add_if_fits(high_fee_mempool.pick_by_weight())
+        block.add_if_fits(high_fee_mempool.pick_by_weight_ratio())
 
     for tx in shuffled((tx for tx in mempool if tx.is_low_fee())):
-        if prob(tx.scaled_weight):
+        if prob(tx.scaled_weight_ratio):
             if block.health(tx) < 2/3:
                 break
             block.add_if_fits(tx)
@@ -206,12 +206,12 @@ def algorithm_4(block, mempool):
     """This is the proposed algorithm."""
     high_fee_mempool = Mempool((tx for tx in mempool if not tx.is_low_fee()))
     while high_fee_mempool.num_transactions() > 0:
-        block.add_if_fits(high_fee_mempool.pick_by_weight())
+        block.add_if_fits(high_fee_mempool.pick_by_weight_ratio())
 
     remaining_mempool = Mempool((tx for tx in mempool if tx.is_low_fee()))
     unpaid_actions = 0
     while remaining_mempool.num_transactions() > 0:
-        tx = remaining_mempool.pick_by_weight()
+        tx = remaining_mempool.pick_by_weight_ratio()
         assert tx.unpaid_actions > 0
         if unpaid_actions + tx.unpaid_actions > BLOCK_UNPAID_ACTION_LIMIT:
             continue
